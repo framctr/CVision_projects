@@ -53,25 +53,32 @@ logging.basicConfig(stream = sys.stdout, format = FORMAT, level = logging.INFO)
 # NOTSET   |     0
 ###############################
 
-#############
-# DECORATORS
-#############
+# Constants
 
-def timing(func):
-    """
-    Decorator to log every process execution time (based on processor so exec + sleeping time).
-    """
-    from functools import wraps
-    from time import perf_counter
-    
-    @wraps(func)
-    def profile(*args, **kwargs):
-        start = perf_counter()
-        ret = func(*args, **kwargs)
-        end = perf_counter()
-        logging.info("%s run for %.7f seconds." %(func.__name__, end - start))
-        return ret
-    return profile
+# colors
+WHITE  = (255, 255, 255)
+BLACK  = (0, 0, 0)
+RED    = (255, 0, 0)
+GREEN  = (0, 255, 0)
+BLUE   = (0, 0, 255)
+L_BLUE = (3, 142, 170) # light blue
+ORANGE = (234, 114, 2)
+PURPLE = (234, 2, 219)
+
+# Typos
+font          = cv2.FONT_HERSHEY_PLAIN
+txt_scale     = 2
+txt_thickness = 2
+txt_line_type = cv2.LINE_8
+
+# opencv hierarchy indexes
+NEXT     = 0
+PREVIOUS = 1
+F_CHILD  = 2
+PARENT   = 3
+
+X = 0
+Y = 1
 
 ####################
 # HELPER FUNCTIONS
@@ -140,41 +147,10 @@ def show_images(columns=1, rows_per_sheet=3):
 
     plt.show()
 
-###############
-# FUNCTIONS
-###############
-
-def exp_operator(image, r=1):
-    # build a lookup table mapping the pixel values [0, 255] to
-	# their adjusted gamma values
-	table = np.array([((i / 255.0) ** r) * 255
-		for i in np.arange(0, 256)]).astype(np.uint8)
-	# apply gamma correction using the lookup table
-	return cv2.LUT(image, table)
-
-def find_percentile(hist, percentile):
-    s = 0
-    idx = 0
-    total_pixel = np.sum(hist)
-    while s < total_pixel * percentile / 100:
-        s += hist[idx]
-        idx += 1
-    return idx
-
-def linear_stretching(image, max_value, min_value):
-    image[image < min_value] = min_value
-    return
-
-def pfm(hist):
-    total_pixel = np.sum(hist)
-    pfm = []
-    for i in range(256):
-        pfm_i = np.sum(hist[:i]) / total_pixel
-        pfm.append(pfm_i)
-    return np.asarray(pfm)
-
-def lerp(a, b, t):
-    return (1 - t) * a + t * b
+def lerp(start, end, t):
+    """ 1D linear interpolation
+    """
+    return (1 - t) * start + t * end
 
 ############
 # Main
@@ -197,113 +173,45 @@ for image_i in basic_images:
     filtered = cv2.medianBlur(source, ksize=3)
     plot_image(filtered, "Denoised")
 
-    ############################
-    # Intensity Transformations
-    ############################
-
     histogram = evaluate_histogram(filtered)
-    
-    #max_value = find_percentile(histogram, 95)
-    #min_value = find_percentile(histogram, 5)
-
-    #eq_op = pfm(histogram) * 255
-    #equ = eq_op[filtered]
-
-    #en_img = exp_operator(filtered, 1.5)
-    en_img = filtered
-    #plot_image(en_img, "Enhanced - " + image_i, eval_hist=True)
 
     #################
     # Binarization
     #################
 
-    #ret, binarized = cv2.threshold(en_img, 127, 255, cv2.THRESH_BINARY)
-    #plot_image(th1, "Binarized")
-
-    #binarized = cv2.adaptiveThreshold(filtered, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 5, 2)
-    #plot_image(th2, "Binarized")
-
     # Inverted because in OpenCV contour detection need white object over black background. See https://docs.opencv.org/3.4/d4/d73/tutorial_py_contours_begin.html
-    ret, binarized = cv2.threshold(en_img , 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    ret, binarized = cv2.threshold(filtered , 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
     plot_image(binarized, "Binarized")
 
     ####################
     # Binary Morphology
     ####################
 
-    #kernel = np.ones((5,5),np.uint8)
     kernel = np.ones((3,3),np.uint8)
-    #kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5,5))
-
-    #closing = cv2.morphologyEx(binarized, cv2.MORPH_OPEN, kernel)
-    #plot_image(opening, "Opening")
 
     closing = cv2.morphologyEx(binarized, cv2.MORPH_CLOSE, kernel)
-    #closing = cv2.erode(binarized, kernel, iterations = 3)
-    plot_image(closing, "Closing")
+    #plot_image(closing, "Closing")
 
-    #dilation = cv2.erode(binarized, kernel, iterations = 1)
-    #plot_image(dilation, "Dilation")
+    #####################
+    # Final calculations
+    #####################
 
-    ####################
-    # Contours
-    ####################
-
-    WHITE = (255, 255, 255)
-    BLACK = (0, 0, 0)
-    RED    = (255, 0, 0)
-    GREEN  = (0, 255, 0)
-    BLUE   = (0, 0, 255)
-    L_BLUE = (3, 142, 170) # light blue
-    ORANGE = (234, 114, 2)
-    PURPLE = (234, 2, 219)
-
-    font = cv2.FONT_HERSHEY_PLAIN
-    scale = 2
-    thickness = 2
-    line_type = cv2.LINE_8
-
-    method = cv2.CHAIN_APPROX_NONE # store all the contour pixels
-    #method = cv2.CHAIN_APPROX_SIMPLE # store not redundant (end) points of the contour
-
-    # here use copy() to keep old image
-    c_img, contours, hierarchy = cv2.findContours(closing.copy(), cv2.RETR_TREE, method)
+    mask, contours, hierarchy = cv2.findContours(binarized, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
 
     final = source.copy() # apply draws on source copy
     final = cv2.cvtColor(final, cv2.COLOR_GRAY2BGR)
 
+    # debug
     #cv2.drawContours(final, contours, -1, RED, 2)
-    
-    if False:
-        print("Image " + image_name)
-        print("HIERARCHY")
-        print(hierarchy)
-        print(hierarchy[0][1][0]) # matrice riga colonna
-        print(contours[0][0][1]) # contorno, matrice, riga, colonna
-        print("AND ITS SHAPE")
-        for shape in hierarchy.shape:
-            print(shape)
-            print("FINE SHAPE")
-
-        for i in range(len(contours)):
-            cv2.putText(final, str(i), (contours[i][0][0][0], contours[i][0][0][1]), font, scale, BLUE, thickness, line_type)
-        plot_image(c_img, "Labeled")
-
-    # per riconoscere trova il baricentro, lunghezza, larghezza e fori. Se ha almeno un foro e la larghezza è molto
-    # minore della lunghezza (elognatedness del MER maggiore di una certa quantità), allora è una biella. Se ha 2 buchi tipo B altrimenti A
-
-    NEXT     = 0
-    PREVIOUS = 1
-    F_CHILD  = 2
-    PARENT   = 3
 
     rod_count = 1
-
     for i in range(hierarchy.shape[1]): # loop through hierarchy rows
         if hierarchy[0][i][PARENT] == -1 and hierarchy[0][i][F_CHILD] != -1: # 1. is external contour? 2. possible rod?
             # evaluate MER (minimum (oriented) enclosing rectangle)
             mer = cv2.minAreaRect(contours[i])
-            print(mer) # (center (x,y), (width, height), angle of rotation as in https://docs.opencv.org/master/dd/d49/tutorial_py_contour_features.html
+            
+            logging.debug("MER " + str(mer)) # (center (x,y), (width, height), angle of rotation as in https://docs.opencv.org/master/dd/d49/tutorial_py_contour_features.html
+            
             mer_centre = mer[0]
             dims = (
                 mer[1][0] if mer[1][0] < mer[1][1] else mer[1][1], # width < height
@@ -311,7 +219,7 @@ for image_i in basic_images:
             )
             rot_angle = mer[2]
 
-            elong = dims[1] / dims[0]
+            elong = dims[1] / dims[0] # elognatedness
 
             if elong > 1.5: # if elongated more than a threshold (0.5) then it is a rod
                 ch1 = hierarchy[0][i][F_CHILD]
@@ -327,9 +235,6 @@ for image_i in basic_images:
                 rod_count += 1 # keep track of rods. Just for name them
 
                 # evaluate barycenter through scanline algorithm
-                X = 0
-                Y = 1
-
                 y_min = np.min(contours[i][:, 0, Y])
                 y_max = np.max(contours[i][:, 0, Y])
 
@@ -347,7 +252,7 @@ for image_i in basic_images:
 
                     count = 0
                     for x_px in range(b_min, b_max + 1):
-                        if np.all(c_img[y_px][x_px] == WHITE):
+                        if np.all(mask[y_px][x_px] == WHITE):
                             count += 1
                             tot_x += x_px
 
@@ -392,7 +297,7 @@ for image_i in basic_images:
                     p_y = int(round( lerp(barycenter[Y], perp[Y], t) ))
 
                     if p_x != curr_x or p_y != curr_y: # new pixel found
-                        if c_img[curr_y][curr_x] == 255: # stop if background encountered
+                        if mask[curr_y][curr_x] == 255: # stop if background encountered
                             
                             # shift along x or y then increment by 1 
                             # diagonal movement then increment by sqrt(2)
@@ -439,7 +344,15 @@ for image_i in basic_images:
                 cv2.drawContours(final, [box], 0, GREEN, 1)
 
                 # draw numbered rod type
-                cv2.putText(final, rod_name, (contours[i][0][0][0], contours[i][0][0][1]), font, scale, RED, thickness, line_type)
+                cv2.putText(
+                    final, 
+                    rod_name, 
+                    (contours[i][0, 0, X], contours[i][0, 0, Y]), 
+                    font, 
+                    txt_scale, 
+                    BLUE, 
+                    txt_thickness, 
+                    txt_line_type)
 
                 # complete report
                 print("\n====== Rod " + rod_name + " in image " + image_i + " ======" + "\n" +
