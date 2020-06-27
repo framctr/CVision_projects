@@ -179,6 +179,67 @@ def euclidean_length(a, b):
     return math.sqrt(a**2 + b**2)
 
 
+def evaluate_line(start, end):
+    increment = 0.01
+    t = 0
+
+    line = []
+
+    curr_x = int(round(start[X]))
+    curr_y = int(round(start[Y]))
+
+    line.append( (curr_x, curr_y) )
+
+    while t < 1:
+        t += increment
+
+        p_x = int(round( lerp(start[X], end[X], t) ))
+        p_y = int(round( lerp(start[Y], end[Y], t) ))
+
+        if p_x != curr_x or p_y != curr_y: # new pixel found
+            curr_x = p_x
+            curr_y = p_y
+
+            line.append( (curr_x, curr_y) )
+
+    return line
+
+
+def evaluate_bezier_curve(cpts):
+    """ Evaluate discrete bezier curve from given control points using the De Casteljau uniform algorithm.
+    """
+    
+    size = len(cpts)
+    n = size - 1 # curve's degree
+
+    t_increment = 0.01
+    t = 0
+
+    bezier_curve = []
+    matrix = np.zeros( (size, size, 2) ) # tmp xy matrix
+
+    while t < 1:
+        # copy the cpts values in a matrix we can work on
+        for j in range(size):
+            matrix[0][j][X] = cpts[j][X]
+            matrix[0][j][Y] = cpts[j][Y]
+
+        # calculate the curve
+        for i in range(1, size):
+            for j in range(0, size - i):
+                matrix[i][j][X] = lerp(matrix[i-1][j][X], matrix[i-1][j+1][X], t)
+                matrix[i][j][Y] = lerp(matrix[i-1][j][Y], matrix[i-1][j+1][Y], t)
+
+        bezier_curve.append( ( int(round(matrix[n][0][X])), int(round(matrix[n][0][Y])) ) )
+        t += t_increment
+
+    return bezier_curve
+
+
+##################
+# CORE FUNCTIONS
+##################
+
 def find_rods_connections(contour):
     """
     Evaluate connections through convexity defects.
@@ -242,63 +303,6 @@ def find_rods_connections(contour):
             contact_pts.append(curr_pt)
 
     return contact_pts
-
-
-def evaluate_line(start, end):
-    increment = 0.01
-    t = 0
-
-    line = []
-
-    curr_x = int(round(start[X]))
-    curr_y = int(round(start[Y]))
-
-    line.append( (curr_x, curr_y) )
-
-    while t < 1:
-        t += increment
-
-        p_x = int(round( lerp(start[X], end[X], t) ))
-        p_y = int(round( lerp(start[Y], end[Y], t) ))
-
-        if p_x != curr_x or p_y != curr_y: # new pixel found
-            curr_x = p_x
-            curr_y = p_y
-
-            line.append( (curr_x, curr_y) )
-
-    return line
-
-
-def evaluate_bezier_curve(cpts):
-    """ Evaluate discrete bezier curve from given control points using the De Casteljau uniform algorithm.
-    """
-    
-    size = len(cpts)
-    n = size - 1 # curve's degree
-
-    t_increment = 0.01
-    t = 0
-
-    bezier_curve = []
-    matrix = np.zeros( (size, size, 2) ) # tmp xy matrix
-
-    while t < 1:
-        # copy the cpts values in a matrix we can work on
-        for j in range(size):
-            matrix[0][j][X] = cpts[j][X]
-            matrix[0][j][Y] = cpts[j][Y]
-
-        # calculate the curve
-        for i in range(1, size):
-            for j in range(0, size - i):
-                matrix[i][j][X] = lerp(matrix[i-1][j][X], matrix[i-1][j+1][X], t)
-                matrix[i][j][Y] = lerp(matrix[i-1][j][Y], matrix[i-1][j+1][Y], t)
-
-        bezier_curve.append( ( int(round(matrix[n][0][X])), int(round(matrix[n][0][Y])) ) )
-        t += t_increment
-
-    return bezier_curve
 
 
 def fix_connections(mask, contour):
