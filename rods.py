@@ -93,6 +93,16 @@ def log_image_infos(image, image_name=""):
     logging.info(bit_dpt)
 
 
+def reset_plotting_arrays():
+    global plot_imgs
+    global plot_titl
+    global plot_hist
+    
+    plot_imgs = []
+    plot_titl = []
+    plot_hist = []
+
+
 def evaluate_histogram(image):
     hist, bins = np.histogram(image.flatten(), 256, [0, 256])
     return hist
@@ -147,6 +157,15 @@ def show_images(columns=1, rows_per_sheet=3):
     plt.legend(legend, loc = 'upper left')
 
     plt.show()
+
+    # at the end refresh matplotlib memory
+    reset_plotting_arrays()
+
+    for f in range(figures):
+        plt.figure(f)
+        plt.clf()
+        plt.cla()
+    plt.close('all')
 
 
 def lerp(start, end, t):
@@ -488,124 +507,127 @@ def evaluate_blobs(binary_mask):
     return rods
 
 
+def compute_images(image_indexes):
+    for image_i in image_indexes:
+        global plot_cols
+        plot_cols = 0
+
+        image_name = img_prefix + image_i + img_extens
+        source = cv2.imread(os.path.join(folder, image_name), cv2.IMREAD_GRAYSCALE)
+        plot_image(source, "Original - " + image_i, eval_hist=True)
+
+        log_image_infos(source, image_name)
+
+        #################
+        # Denoising
+        #################
+
+        filtered = cv2.medianBlur(source, ksize=3)
+        plot_image(filtered, "Denoised")
+
+        histogram = evaluate_histogram(filtered)
+
+        #################
+        # Binarization
+        #################
+
+        # Inverted because in OpenCV contour detection need white object over black background. See https://docs.opencv.org/3.4/d4/d73/tutorial_py_contours_begin.html
+        ret, binarized = cv2.threshold(filtered , 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+        plot_image(binarized, "Binarized")
+
+        ####################
+        # Binary Morphology
+        ####################
+
+        #kernel = np.ones((3,3),np.uint8)
+
+        #closing = cv2.morphologyEx(binarized, cv2.MORPH_CLOSE, kernel)
+        #plot_image(closing, "Closing")
+
+        #####################
+        # Final calculations
+        #####################
+
+        final = source.copy() # apply draws on source copy
+        final = cv2.cvtColor(final, cv2.COLOR_GRAY2BGR)
+
+        # debug
+        #cv2.drawContours(final, contours, -1, RED, 2)
+
+        for rod in evaluate_blobs(binarized):
+            mer = rod[0]
+            barycenter = rod[1]
+            circle1 = rod[2]
+            circle2 = rod[3]
+            rod_name = rod[4]
+            text_location = rod[5]
+            dims = rod[6]
+            wab = rod[7]
+
+            # prepare MER box to be drawn
+            box = cv2.boxPoints(mer)
+            box = np.int0(box)
+
+            # draw barycenter
+            #cv2.circle(final, (round(mer[0][0]), round(mer[0][1])), 1, L_BLUE, 2) # MER (not exact)
+            cv2.circle(final, (int(round(barycenter[0])), int(round(barycenter[1]))), 1, RED, 2) # scanline (exact)
+            
+            # draw holes and report their infos
+            cv2.ellipse(final, circle1, ORANGE, 2)
+            cv2.circle(final, (round(circle1[0][0]), round(circle1[0][1])), 1, ORANGE, 2)
+            hole_info = ("- Hole 1 (orange) -" + "\n" +
+                "Location x: " + str(circle1[0][0]) + "\n" +
+                "Location y: " + str(circle1[0][1]) + "\n" +
+                "Diameter:   " + str((circle1[1][0] + circle1[1][1]) / 2) # not perfect circle. So W+H / 2
+            )
+            if circle2 is not None:
+                cv2.ellipse(final, circle2, PURPLE, 2)
+                cv2.circle(final, (round(circle2[0][0]), round(circle2[0][1])), 1, PURPLE, 2)
+                hole_info += ("\n- Hole 2 (purple) -" + "\n" +
+                "Location x: " + str(circle2[0][0]) + "\n" +
+                "Location y: " + str(circle2[0][1]) + "\n" +
+                "Diameter:   " + str((circle2[1][0] + circle2[1][1]) / 2) # not perfect circle. So W+H / 2
+                )
+            
+            # draw MER
+            cv2.drawContours(final, [box], 0, GREEN, 1)
+
+            # draw numbered rod type
+            cv2.putText(
+                final, 
+                rod_name, 
+                text_location, 
+                font, 
+                txt_scale, 
+                BLUE, 
+                txt_thickness, 
+                txt_line_type)
+            
+            # complete report
+            print("\n====== Rod " + rod_name + " in image " + image_i + " ======" + "\n" +
+                "Location x:  " + str(mer[0][0])  + "\n" +
+                "Location y:  " + str(mer[0][1])  + "\n" +
+                "Orientation: " + str(mer[2])     + "\n" +
+                "Length:      " + str(dims[1])    + "\n" +
+                "Width:       " + str(dims[0])    + "\n" +
+                "Barycenter:  " + str(barycenter) + "\n" +
+                "WaB:         " + str(wab)        + "\n" +
+                hole_info
+            )
+
+        plot_image(final, "Final")
+
+    logging.debug("Total columns to plot: " + str(plot_cols))
+
+    show_images(columns=plot_cols, rows_per_sheet=2)
+
+
 ############
 # Main
 ############
 logging.info("OpenCV version is " + cv2.__version__)
 
-""" basic_images = ('00', '01', '12', '21', '31', '33')
-distr_images = ('44', '47', '48', '49')
-conta_images = ('50', '51')
-powde_images = ('90', '92', '98') """
-
-for image_i in conta_images:
-    plot_cols = 0
-
-    image_name = img_prefix + image_i + img_extens
-    source = cv2.imread(os.path.join(folder, image_name), cv2.IMREAD_GRAYSCALE)
-    plot_image(source, "Original - " + image_i, eval_hist=True)
-
-    log_image_infos(source, image_name)
-
-    #################
-    # Denoising
-    #################
-
-    filtered = cv2.medianBlur(source, ksize=3)
-    plot_image(filtered, "Denoised")
-
-    histogram = evaluate_histogram(filtered)
-
-    #################
-    # Binarization
-    #################
-
-    # Inverted because in OpenCV contour detection need white object over black background. See https://docs.opencv.org/3.4/d4/d73/tutorial_py_contours_begin.html
-    ret, binarized = cv2.threshold(filtered , 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-    plot_image(binarized, "Binarized")
-
-    ####################
-    # Binary Morphology
-    ####################
-
-    #kernel = np.ones((3,3),np.uint8)
-
-    #closing = cv2.morphologyEx(binarized, cv2.MORPH_CLOSE, kernel)
-    #plot_image(closing, "Closing")
-
-    #####################
-    # Final calculations
-    #####################
-
-    final = source.copy() # apply draws on source copy
-    final = cv2.cvtColor(final, cv2.COLOR_GRAY2BGR)
-
-    # debug
-    #cv2.drawContours(final, contours, -1, RED, 2)
-
-    for rod in evaluate_blobs(binarized):
-        mer = rod[0]
-        barycenter = rod[1]
-        circle1 = rod[2]
-        circle2 = rod[3]
-        rod_name = rod[4]
-        text_location = rod[5]
-        dims = rod[6]
-        wab = rod[7]
-
-        # prepare MER box to be drawn
-        box = cv2.boxPoints(mer)
-        box = np.int0(box)
-
-        # draw barycenter
-        #cv2.circle(final, (round(mer[0][0]), round(mer[0][1])), 1, L_BLUE, 2) # MER (not exact)
-        cv2.circle(final, (int(round(barycenter[0])), int(round(barycenter[1]))), 1, RED, 2) # scanline (exact)
-        
-        # draw holes and report their infos
-        cv2.ellipse(final, circle1, ORANGE, 2)
-        cv2.circle(final, (round(circle1[0][0]), round(circle1[0][1])), 1, ORANGE, 2)
-        hole_info = ("- Hole 1 (orange) -" + "\n" +
-            "Location x: " + str(circle1[0][0]) + "\n" +
-            "Location y: " + str(circle1[0][1]) + "\n" +
-            "Diameter:   " + str((circle1[1][0] + circle1[1][1]) / 2) # not perfect circle. So W+H / 2
-        )
-        if circle2 is not None:
-            cv2.ellipse(final, circle2, PURPLE, 2)
-            cv2.circle(final, (round(circle2[0][0]), round(circle2[0][1])), 1, PURPLE, 2)
-            hole_info += ("\n- Hole 2 (purple) -" + "\n" +
-            "Location x: " + str(circle2[0][0]) + "\n" +
-            "Location y: " + str(circle2[0][1]) + "\n" +
-            "Diameter:   " + str((circle2[1][0] + circle2[1][1]) / 2) # not perfect circle. So W+H / 2
-            )
-        
-        # draw MER
-        cv2.drawContours(final, [box], 0, GREEN, 1)
-
-        # draw numbered rod type
-        cv2.putText(
-            final, 
-            rod_name, 
-            text_location, 
-            font, 
-            txt_scale, 
-            BLUE, 
-            txt_thickness, 
-            txt_line_type)
-        
-        # complete report
-        print("\n====== Rod " + rod_name + " in image " + image_i + " ======" + "\n" +
-            "Location x:  " + str(mer[0][0])  + "\n" +
-            "Location y:  " + str(mer[0][1])  + "\n" +
-            "Orientation: " + str(mer[2])     + "\n" +
-            "Length:      " + str(dims[1])    + "\n" +
-            "Width:       " + str(dims[0])    + "\n" +
-            "Barycenter:  " + str(barycenter) + "\n" +
-            "WaB:         " + str(wab)        + "\n" +
-            hole_info
-        )
-
-    plot_image(final, "Final")
-
-logging.debug("Total columns to plot: " + str(plot_cols))
-
-show_images(columns=plot_cols, rows_per_sheet=2)
+compute_images(basic_images)
+compute_images(distr_images)
+compute_images(conta_images)
+compute_images(powde_images)
