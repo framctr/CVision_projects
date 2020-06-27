@@ -245,8 +245,6 @@ def find_rods_connections(contour):
 
 
 def evaluate_line(start, end):
-    diff = (end[X] - start[X], end[Y] - start[Y])
-    
     increment = 0.01
     t = 0
 
@@ -387,12 +385,10 @@ def evaluate_blobs(binary_mask):
             
             logging.debug("MER " + str(mer)) # (center (x,y), (width, height), angle of rotation as in https://docs.opencv.org/master/dd/d49/tutorial_py_contour_features.html
             
-            mer_centre = mer[0]
             dims = (
                 mer[1][0] if mer[1][0] < mer[1][1] else mer[1][1], # width < height
                 mer[1][1] if mer[1][1] > mer[1][0] else mer[1][0], # height > width
             )
-            rot_angle = mer[2]
 
             elong = dims[1] / dims[0] # elognatedness
 
@@ -519,34 +515,20 @@ def compute_images(image_indexes):
         log_image_infos(source, image_name)
 
         #################
-        # Denoising
-        #################
+        # 1. Denoising
 
         filtered = cv2.medianBlur(source, ksize=3)
         plot_image(filtered, "Denoised")
 
-        histogram = evaluate_histogram(filtered)
-
         #################
-        # Binarization
-        #################
+        # 2. Binarization
 
         # Inverted because in OpenCV contour detection need white object over black background. See https://docs.opencv.org/3.4/d4/d73/tutorial_py_contours_begin.html
         ret, binarized = cv2.threshold(filtered , 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
         plot_image(binarized, "Binarized")
 
-        ####################
-        # Binary Morphology
-        ####################
-
-        #kernel = np.ones((3,3),np.uint8)
-
-        #closing = cv2.morphologyEx(binarized, cv2.MORPH_CLOSE, kernel)
-        #plot_image(closing, "Closing")
-
         #####################
-        # Final calculations
-        #####################
+        # 3. Final calculations
 
         final = source.copy() # apply draws on source copy
         final = cv2.cvtColor(final, cv2.COLOR_GRAY2BGR)
@@ -612,7 +594,7 @@ def compute_images(image_indexes):
                 "Width:       " + str(dims[0])    + "\n" +
                 "Barycenter:  " + str(barycenter) + "\n" +
                 "WaB:         " + str(wab)        + "\n" +
-                hole_info
+                hole_info + "\n"
             )
 
         plot_image(final, "Final")
