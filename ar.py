@@ -44,12 +44,17 @@ figure = 1
 MIN_MATCH_COUNT = 4
 
 # Colors
+WHITE  = (255, 255, 255)
+BLACK  = (0, 0, 0)
 RED    = (255, 0, 0)
 GREEN  = (0, 255, 0)
 BLUE   = (0, 0, 255)
 L_BLUE = (3, 142, 170) # light blue
 ORANGE = (234, 114, 2)
 PURPLE = (234, 2, 219)
+
+X = 0
+Y = 1
 
 ####################
 # HELPER FUNCTIONS
@@ -68,41 +73,6 @@ def log_video_infos(video, video_name=""):
     logging.info(src_dim)
     logging.info(src_fps)
     logging.info(src_cnt)
-
-
-def play_video(path, name):
-    cap = cv2.VideoCapture(os.path.join(path, name))
-
-    while cap.isOpened():
-        ret, frame = cap.read()
-
-        if not ret or frame is None:
-            cap.release()
-            print("Video resource released.")
-            break
-
-        cv2.imshow('frame', frame)
-
-        if cv2.waitKey(1) == ord('q'):
-            break
-
-        cap.release()
-        cv2.destroyAllWindows()
-
-
-def save_video(video, path, name, width, height, fps):
-    # TODO
-    fourcc = cv2.VideoWriter_fourcc(*'DIVX')
-    out = cv2.VideoWriter(os.path.join(path, name), fourcc, fps, (width, height))
-
-    while video.isOpened():
-        ret, frame = video.read()
-        if not ret or frame is None:
-            logging.warning("No frame received (stream end?). Exiting...")
-            break
-        out.write(frame)
-
-    out.release()
 
 
 def plot_image(image, title=""):
@@ -130,6 +100,40 @@ def obj_mask_extraction(image, mask):
     return img
 
 
+def crop_image(image, mask):
+    #layer = layer[:, 200:500]
+    #ar_layer_mask = ar_layer_mask[:, 200:500]
+
+    mask, contours, hierarchy = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+
+    x_min = y_min = math.inf
+    x_max = y_max = 0
+
+    for i in range(hierarchy.shape[1]): # loop through hierarchy rows
+        curr_x_min = np.min(contours[i][:, 0, X])
+        curr_x_max = np.max(contours[i][:, 0, X])
+        curr_y_min = np.min(contours[i][:, 0, Y])
+        curr_y_max = np.max(contours[i][:, 0, Y])
+
+        x_min = curr_x_min if curr_x_min < x_min else x_min
+        x_max = curr_x_max if curr_x_max > x_max else x_max
+        y_min = curr_y_min if curr_y_min < y_min else y_min
+        y_max = curr_y_max if curr_y_max > y_max else y_max
+
+    print(x_min)
+    print(x_max)
+    print(y_min)
+    print(y_max)
+
+    x_min -= 1
+    x_max += 1
+    y_min -= 1
+    y_max += 1
+
+    return image[y_min:y_max, x_min:x_max], mask[y_min:y_max, x_min:x_max]
+    
+
+
 ######################
 # Main
 ######################
@@ -140,16 +144,14 @@ ref_mask  = cv2.imread(os.path.join(folder, ref_frame_mask_name), cv2.IMREAD_GRA
 
 reference = obj_mask_extraction(ref_frame, ref_mask)
 
-plot_image(reference, "Reference Frame")
+#debug
+#plot_image(reference, "Reference Frame")
 
 # Load AR layer image
 ar_layer = cv2.imread(os.path.join(folder, ar_layer_name), cv2.IMREAD_COLOR)
 ar_layer_mask = cv2.imread(os.path.join(folder, ar_layer_mask_name), cv2.IMREAD_GRAYSCALE)
 
 layer = obj_mask_extraction(ar_layer, ar_layer_mask)
-
-# TODO Devi ritagliare la label in due parti corrispndenti alle due etichette e sicronizzarle..........
-# oppure ritagli l'immagine e tieni la maschera e la riusi così com'è.
 
 height_ref = reference.shape[0]
 width_ref  = reference.shape[1]
@@ -158,15 +160,31 @@ height_label = layer.shape[0]
 width_label  = layer.shape[1]
 
 # the width of the layer is >> than the reference. We crop it
-layer = layer[:, 200:500]
+x_min = 200
+x_max = 480
+y_min = 20
+y_max = 410
+layer = layer[y_min:y_max, x_min:x_max]
+ar_layer_mask = ar_layer_mask[y_min:y_max, x_min:x_max]
+
+crop_image(layer, ar_layer_mask)
 
 height_label = layer.shape[0]
 width_label  = layer.shape[1]
 
-plot_image(layer, "AR layer")
+#debug
+#plot_image(layer, "AR layer")
 
 # Load input video
 src_video = cv2.VideoCapture(os.path.join(folder, source_name))
+
+height_frame = int(src_video.get(cv2.CAP_PROP_FRAME_HEIGHT))
+width_frame  = int(src_video.get(cv2.CAP_PROP_FRAME_WIDTH))
+fps          = src_video.get(cv2.CAP_PROP_FPS)
+video_length = src_video.get(cv2.CAP_PROP_FRAME_COUNT)
+
+fourcc = cv2.VideoWriter_fourcc(*'DIVX')
+out = cv2.VideoWriter(os.path.join(folder, final_name), fourcc, fps, (width_frame, height_frame), isColor=True)
 
 current_frame = 0
 # move frame by frame
@@ -185,7 +203,9 @@ while src_video.isOpened():
         break
 
     current_frame += 1
-    plot_image(frame, "Current frame (" + str(current_frame) + ")")
+
+    # debug
+    #plot_image(frame, "Current frame (" + str(current_frame) + ")")
 
     # Scale Invariant Feature Transform
     sift = cv2.xfeatures2d.SIFT_create() # sift detector initialization
@@ -216,6 +236,10 @@ while src_video.isOpened():
 
     # Object found?
     if len(good_matches) >= MIN_MATCH_COUNT:
+        #debug
+        #cap = cv2.drawMatches(reference, kp_ref, frame, kp_frame, good_matches[:MIN_MATCH_COUNT], 0, flags=2)
+        #plot_image(cap)
+
         src_pts = np.float32([kp_ref[m.queryIdx].pt for m in good_matches]).reshape(-1, 1, 2)
         dst_pts = np.float32([kp_frame[m.trainIdx].pt for m in good_matches]).reshape(-1, 1, 2)
 
@@ -223,23 +247,20 @@ while src_video.isOpened():
         M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
         matches_mask = mask.ravel().tolist()
 
-        print("M1 " + str(M))
+        # debug
+        #plot_matches(reference, kp_ref, frame, kp_frame, good_matches, matches_mask)
 
-        # get current frame dimensions
-        height_frame = frame.shape[0]
-        width_frame  = frame.shape[1]
-
-        print("REF " + str(width_ref) + "-" + str(height_ref) + "\n" +
-        "LABEL " + str(width_label) + "-" + str(height_label) + "\n" +
-        "FRAME " + str(width_frame) + "-" + str(height_frame) + "\n" )
-
+        # 194, 27  | 459, 26
+        # 190, 406 | 476, 409
         ref_pts = np.float32([
-            [0, 0],
-            [0, height_ref - 1],
-            [width_ref - 1, height_ref - 1],
-            [width_ref - 1, 0]]).reshape(-1, 1, 2)
+            [194, 27], [190, 406],
+            [476, 409], [459, 26] ]).reshape(-1, 1, 2)
         
         ref_dst = cv2.perspectiveTransform(ref_pts, M)
+
+        #debug
+        #img2 = cv2.polylines(frame, [np.int32(ref_dst)], True, GREEN, 3, cv2.LINE_AA)
+        #plot_image(img2)
 
         # Getting the homography to project ar layer on the surface of the query object.
         pts_label = np.float32([
@@ -248,37 +269,36 @@ while src_video.isOpened():
             [width_label - 1, height_label - 1],
             [width_label - 1, 0]]).reshape(-1, 1, 2)
 
-        print("REF_DST " + str(ref_dst))
-
         M = cv2.getPerspectiveTransform(pts_label, ref_dst)
-        print("M2 " + str(M))
-
-        #plot_matches(reference, kp_ref, frame, kp_frame, good_matches, matches_mask)
 
         # Warping the ar layer
         warped = cv2.warpPerspective(layer, M, (width_frame, height_frame))
 
         # Warp a white mask to understand what are the black pixels
-        white = np.ones([height_label, width_label], dtype=np.uint8) * 255
-        warp_mask = cv2.warpPerspective(white, M, (width_frame, height_frame))
-
-        plt.figure(49)
-        plt.imshow(warped)
-        plt.show()
+        #white = np.ones([height_label, width_label], dtype=np.uint8) * 255
+        #warp_mask = cv2.warpPerspective(white, M, (width_frame, height_frame))
+        warp_mask = cv2.warpPerspective(ar_layer_mask, M, (width_frame, height_frame))
 
         # Restore previous values of the train images where the mask is black
         warp_mask = np.equal(warp_mask, 0)
         warped[warp_mask] = frame[warp_mask]
 
-        warped = cv2.cvtColor(warped, cv2.COLOR_BGR2RGB)
-    
-        # Displaying the result
-        plt.figure(49)
-        plt.imshow(warped)
-        plt.show()
-        src_video.release()
-        cv2.destroyAllWindows()
+        # debug
+        #plt.figure(49)
+        #plt.imshow(warp_mask, cmap='gray')
+        #plt.figure(50)
+        #plt.imshow(warped)
+        #plt.show()
+        #sys.exit()
+
+        # save frame
+        out.write(warped)
+        logging.info("Frame " + str(current_frame) + "/" + str(int(video_length)) + " rendered.")
     else:
         msg = "Not enough matches are found - " + str(len(good_matches)) + "/" + str(MIN_MATCH_COUNT)
         logging.info(msg)
         matchesMask = None
+
+src_video.release()
+out.release()
+cv2.destroyAllWindows()
