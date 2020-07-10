@@ -468,7 +468,7 @@ def evaluate_blobs(binary_mask):
 
                     t = 0
                     increment = 0.1 / math.sqrt(perp[X]**2 + perp[Y]**2)
-                    diagonal = math.sqrt(2)
+                    #diagonal = math.sqrt(2)
 
                     curr_x = int(round(barycenter[X]))
                     curr_y = int(round(barycenter[Y]))
@@ -482,10 +482,10 @@ def evaluate_blobs(binary_mask):
 
                         if p_x != curr_x or p_y != curr_y: # new pixel found
                             if mask[curr_y][curr_x] == 255: # stop if background encountered
-                                
+
                                 # shift along x or y then increment by 1 
                                 # diagonal movement then increment by sqrt(2)
-                                wab += diagonal if p_x != curr_x and p_y != curr_y else 1
+                                #wab += diagonal if p_x != curr_x and p_y != curr_y else 1
 
                                 curr_x = p_x
                                 curr_y = p_y
@@ -495,6 +495,9 @@ def evaluate_blobs(binary_mask):
                             else:
                                 logging.debug("Break at t=" + str(t))
                                 break
+
+                    bwidth = (barycenter[X] - curr_x, barycenter[Y] - curr_y)
+                    wab = euclidean_length(bwidth[X], bwidth[Y])
 
                     logging.debug("Final t is " + str(t))
                     wab *= 2 # both sides of the barycenter
