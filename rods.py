@@ -449,6 +449,14 @@ def evaluate_blobs(binary_mask):
                     barycenter = (0, 0)
                     if area > 0:
                         barycenter = np.array([tot_x / area, tot_y / area])
+
+                    # Rod orientation
+                    major_axis = (circle1[0][X] - barycenter[X], circle1[0][Y] - barycenter[Y], 0) # 3D needed for cross product
+                    length = euclidean_length(major_axis[X], major_axis[Y])
+                    major_axis = (major_axis[X] / length, major_axis[Y] / length)
+                    orientation = math.atan2(major_axis[Y],  major_axis[X])
+
+                    print("ORIENT " + str(orientation))
                     
                     # Width at barycenter
                     
