@@ -1,6 +1,6 @@
 # Development of an Augmented Reality System
 
-# To execute install:
+# To execute, install:
 # pip3 install numpy
 # pip3 install matplotlib
 # pip3 install opencv-python==3.4.2.16
@@ -100,40 +100,6 @@ def obj_mask_extraction(image, mask):
     return img
 
 
-def crop_image(image, mask):
-    #layer = layer[:, 200:500]
-    #ar_layer_mask = ar_layer_mask[:, 200:500]
-
-    mask, contours, hierarchy = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-
-    x_min = y_min = math.inf
-    x_max = y_max = 0
-
-    for i in range(hierarchy.shape[1]): # loop through hierarchy rows
-        curr_x_min = np.min(contours[i][:, 0, X])
-        curr_x_max = np.max(contours[i][:, 0, X])
-        curr_y_min = np.min(contours[i][:, 0, Y])
-        curr_y_max = np.max(contours[i][:, 0, Y])
-
-        x_min = curr_x_min if curr_x_min < x_min else x_min
-        x_max = curr_x_max if curr_x_max > x_max else x_max
-        y_min = curr_y_min if curr_y_min < y_min else y_min
-        y_max = curr_y_max if curr_y_max > y_max else y_max
-
-    print(x_min)
-    print(x_max)
-    print(y_min)
-    print(y_max)
-
-    x_min -= 1
-    x_max += 1
-    y_min -= 1
-    y_max += 1
-
-    return image[y_min:y_max, x_min:x_max], mask[y_min:y_max, x_min:x_max]
-    
-
-
 ######################
 # Main
 ######################
@@ -167,8 +133,6 @@ y_max = 410
 layer = layer[y_min:y_max, x_min:x_max]
 ar_layer_mask = ar_layer_mask[y_min:y_max, x_min:x_max]
 
-crop_image(layer, ar_layer_mask)
-
 height_label = layer.shape[0]
 width_label  = layer.shape[1]
 
@@ -192,14 +156,14 @@ while src_video.isOpened():
     if cv2.waitKey(1) == ord('q'):
         logging.info("Exiting...")
         src_video.release()
+        out.release()
         cv2.destroyAllWindows()
         sys.exit()
 
     ret, frame = src_video.read()
 
     if not ret or frame is None:
-        src_video.release()
-        print("Input video resource released.")
+        logging.info("End reached.")
         break
 
     current_frame += 1
@@ -250,8 +214,6 @@ while src_video.isOpened():
         # debug
         #plot_matches(reference, kp_ref, frame, kp_frame, good_matches, matches_mask)
 
-        # 194, 27  | 459, 26
-        # 190, 406 | 476, 409
         ref_pts = np.float32([
             [194, 27], [190, 406],
             [476, 409], [459, 26] ]).reshape(-1, 1, 2)
@@ -275,8 +237,6 @@ while src_video.isOpened():
         warped = cv2.warpPerspective(layer, M, (width_frame, height_frame))
 
         # Warp a white mask to understand what are the black pixels
-        #white = np.ones([height_label, width_label], dtype=np.uint8) * 255
-        #warp_mask = cv2.warpPerspective(white, M, (width_frame, height_frame))
         warp_mask = cv2.warpPerspective(ar_layer_mask, M, (width_frame, height_frame))
 
         # Restore previous values of the train images where the mask is black
@@ -302,3 +262,4 @@ while src_video.isOpened():
 src_video.release()
 out.release()
 cv2.destroyAllWindows()
+logging.info("Video resources released.")

@@ -1,6 +1,6 @@
 # Visual inspection of motorcycle connecting rods.
 
-# To execute install:
+# To execute, install:
 # pip3 install numpy
 # pip3 install matplotlib
 # pip3 install opencv-python==3.4.2.16
