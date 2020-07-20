@@ -192,7 +192,7 @@ while src_video.isOpened():
 
     # Check distance between first and second closest elements
     good_matches = []
-    threshold    = 0.7
+    threshold    = 0.8
 
     for m, n in matches:
         if m.distance < threshold * n.distance:
