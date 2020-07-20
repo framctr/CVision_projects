@@ -378,7 +378,7 @@ def fix_connections(mask, contour):
 
 
 def evaluate_blobs(binary_mask):
-    mask, contours, hierarchy = cv2.findContours(binary_mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
+    mask, contours, hierarchy = cv2.findContours(binary_mask.copy(), cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
 
     rod_count = 1
     rods = []
